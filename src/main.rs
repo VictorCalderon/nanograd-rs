@@ -1,18 +1,21 @@
 use std::ops;
+// use petgraph::graph::{Graph};
 
-#[derive(Debug)]
+
+#[derive(Debug, Clone)]
 enum Operation {
     Add,
     Mul
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Value {
     label: String,
     data: i64,
     operation: Option<Operation>,
     parents: Option<Vec<String>>
 }
+
 
 impl Value {
     // Initializing new value 
@@ -53,17 +56,34 @@ impl ops::Mul<Value> for Value {
     }
 }
 
+#[derive(Debug)]
+struct ValueGraph {
+    values: Vec<Value>,
+}
+
+impl ValueGraph {
+   // Create a new ValueGraph using nodes as input
+   fn new(values: Vec<Value>) -> Self {
+       Self { values }
+   }
+}
+
+
 fn main() {
     let first_value = Value::new(5, "Hello".to_owned());
     let second_value = Value::new(10, "World".to_owned());
 
-    println!("This is value A: {:?}", first_value);        
-    println!("This is value B: {:?}", second_value);
+    println!("This is value A: {:?}", first_value.clone());        
+    println!("This is value B: {:?}", second_value.clone());
 
-    let added_values = first_value + second_value;
+    let added_values = first_value.clone() + second_value.clone();
 
     println!("This is the sum of those two values: {:?}", added_values.data);
     println!("The operation performed was: {:?}", added_values.operation);
     println!("The parents of this node is: {:?}", added_values.parents);
+
+    let my_graph = ValueGraph::new(vec![first_value.clone(), second_value.clone(), added_values]);
+    println!("This is my graph: {:?}", my_graph.values);
+
     println!("Hello, world!");
 }
