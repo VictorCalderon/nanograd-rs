@@ -1,6 +1,13 @@
 use std::ops;
+use std::rc::Rc;
+use std::cell::RefCell;
 // use petgraph::graph::{Graph};
 
+
+type MutableRc<T> = Rc<RefCell<T>>;
+fn mutable_rc<T>(data: T) -> MutableRc<T> {
+    Rc::new(RefCell::new(data))
+}
 
 #[derive(Debug, Clone)]
 enum Operation {
@@ -11,16 +18,22 @@ enum Operation {
 #[derive(Debug, Clone)]
 struct Value {
     label: String,
-    data: i64,
+    data: f64,
     operation: Option<Operation>,
-    children: Option<Vec<String>>
+    children: Vec<MutableRc<Value>>
 }
 
 
 impl Value {
     // Initializing new value 
-    fn new(data: i64, label: String) -> Self {
-        Self { data, label, operation: Option::None, children: Option::None }
+    fn new(data: f64, label: String) -> Self {
+        Self { data, label, ..Value::default() }
+    }
+}
+
+impl Default for Value {
+    fn default() -> Value {
+        Value { label: "".to_owned(), data: 0., operation: None, children: vec![] }
     }
 }
 
@@ -34,8 +47,8 @@ impl ops::Add<Value> for Value {
         Value { 
             label: new_label, 
             data: new_value, 
-            operation: Some(Operation::Add), 
-            children: Some(vec![self.label, other.label])
+            operation: Some(Operation::Add),
+            ..Value::default()
         }
     }
 }
@@ -51,7 +64,7 @@ impl ops::Mul<Value> for Value {
             label: new_label, 
             data: new_value, 
             operation: Some(Operation::Mul), 
-            children: Some(vec![self.label, other.label])
+            ..Value::default()
         }
     }
 }
@@ -70,8 +83,8 @@ impl ValueGraph {
 
 
 fn main() {
-    let first_value = Value::new(5, "Hello".to_owned());
-    let second_value = Value::new(10, "World".to_owned());
+    let first_value = Value::new(5., "Hello".to_owned());
+    let second_value = Value::new(10., "World".to_owned());
 
     println!("This is value A: {:?}", first_value.clone());        
     println!("This is value B: {:?}", second_value.clone());
