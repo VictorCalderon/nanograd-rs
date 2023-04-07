@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 use std::ops;
 use std::rc::Rc;
-// use petgraph::graph::{Graph};
+use petgraph::graph::Graph;
+use petgraph::dot::Dot;
+
 type MutableRc<T> = Rc<RefCell<T>>;
 fn mutable_rc<T>(data: T) -> MutableRc<T> {
     Rc::new(RefCell::new(data))
@@ -85,7 +87,6 @@ impl ops::Mul<&Value> for &Value {
 #[derive(Debug, Clone)]
 struct ValueGraph {
     nodes: Vec<MutableRc<Value>>,
-    // edges: Vec<(Weak<RefCell<Value>>, MutableRc<Value>)>,
     edges: Vec<(MutableRc<Value>, MutableRc<Value>)>,
 }
 
@@ -111,6 +112,17 @@ impl ValueGraph {
            }
         }
     }
+
+    fn plot(&self) {
+        // Build an empty base graph
+        let mut g: Graph<&str, &str> = Graph::new();
+        // Add nodes
+        let a = g.add_node("Node vertex: (a)");
+        let b = g.add_node("Node vertex: (b)");
+        // Add edges
+        g.add_edge(a, b, "edge from a to b");
+        println!("Plotted this thing...\n{}", Dot::new(&g));
+    }
 }   
 
 fn main() {
@@ -121,5 +133,6 @@ fn main() {
     // Build a graph
     let graph = ValueGraph::new_with_nodes(vec![mutable_rc(first_value), mutable_rc(second_value), mutable_rc(third_value)]);
     // Let's see if it's true
-    dbg!(&graph);
+    // dbg!(&graph);
+    graph.plot();
 }
