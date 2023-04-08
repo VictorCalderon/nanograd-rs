@@ -1,8 +1,12 @@
+use petgraph::dot::{Config, Dot};
+use petgraph::graph::{Graph, NodeIndex};
+use petgraph::Directed;
 use std::cell::RefCell;
 use std::ops;
 use std::rc::Rc;
-use petgraph::graph::Graph;
-use petgraph::dot::Dot;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static VALUE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 type MutableRc<T> = Rc<RefCell<T>>;
 fn mutable_rc<T>(data: T) -> MutableRc<T> {
@@ -17,43 +21,22 @@ enum Operation {
 
 #[derive(Debug, Clone, PartialEq)]
 struct Value {
+    id: usize,
     label: String,
     data: f64,
     operation: Option<Operation>,
-    children: Vec<MutableRc<Value>>,
+    previous: Vec<MutableRc<Value>>,
 }
 
 impl Value {
     // Initializing new value
     fn new(data: f64, label: String) -> Self {
         Self {
+            id: VALUE_COUNTER.fetch_add(1, Ordering::SeqCst),
             data,
             label,
-            ..Value::default()
-        }
-    }
-
-    // // Add child
-    // fn add_child(&mut self, child: MutableRc<Value>) {
-    //     self.children.push(child);
-    // }
-    //
-    // // Simple depth first algorithm
-    // fn depth_first(&self) {
-    //     println!("Value {}", self.label);
-    //     for child in self.children.iter() {
-    //         child.borrow().depth_first();
-    //     }
-    // }
-}
-
-impl Default for Value {
-    fn default() -> Value {
-        Value {
-            label: "".to_owned(),
-            data: 0.,
             operation: None,
-            children: vec![],
+            previous: vec![],
         }
     }
 }
@@ -63,10 +46,11 @@ impl ops::Add<&Value> for &Value {
 
     fn add(self, other: &Value) -> Value {
         Value {
-            label: format!("{}{}", self.label, other.label),
+            id: VALUE_COUNTER.fetch_add(1, Ordering::SeqCst),
+            label: format!("[{}+{}]", self.label, other.label),
             data: self.data + other.data,
             operation: Some(Operation::Add),
-            children: vec![mutable_rc(self.to_owned()), mutable_rc(other.to_owned())],
+            previous: vec![mutable_rc(self.to_owned()), mutable_rc(other.to_owned())],
         }
     }
 }
@@ -76,63 +60,62 @@ impl ops::Mul<&Value> for &Value {
 
     fn mul(self, other: &Value) -> Value {
         Value {
-            label: format!("{}{}", self.label, other.label),
+            id: VALUE_COUNTER.fetch_add(1, Ordering::SeqCst),
+            label: format!("[{}x{}]", self.label, other.label),
             data: self.data * other.data,
             operation: Some(Operation::Mul),
-            children: vec![mutable_rc(self.to_owned()), mutable_rc(other.to_owned())],
+            previous: vec![mutable_rc(self.to_owned()), mutable_rc(other.to_owned())],
         }
     }
 }
 
-#[derive(Debug, Clone)]
-struct ValueGraph {
-    nodes: Vec<MutableRc<Value>>,
-    edges: Vec<(MutableRc<Value>, MutableRc<Value>)>,
+fn format_node(node: &MutableRc<Value>) -> String {
+    format!("{}({})", node.borrow().label.clone(), node.borrow().data)
 }
 
-impl ValueGraph {
-    fn new() -> ValueGraph {
-        ValueGraph { nodes: vec![], edges: vec![] }
-    }
+// Plot helper function
+fn plot_graph(nodes: Vec<MutableRc<Value>>) {
+    // Iterate over nodes
+    let mut all_nodes = vec![];
+    let mut all_edges = vec![];
 
-    fn new_with_nodes(values: Vec<MutableRc<Value>>) -> ValueGraph {
-        let mut graph = Self::new();
-        for node in values {
-            graph._build(node);
+    for node in nodes.iter() {
+        // Iterate over these previous nodes, format them, and add to edges
+        let formatted_nodes: Vec<(usize, String)> = node
+            .borrow()
+            .previous
+            .iter()
+            .map(|p| (p.borrow().id, format_node(p)))
+            .collect();
+        // Build edges
+        let edges: Vec<(usize, usize)> = formatted_nodes
+            .iter()
+            .map(|(id, _node)| (id.clone(), node.borrow().id))
+            .collect();
+        // Push both to their respective containers
+        all_nodes.extend(formatted_nodes);
+        all_nodes.extend(vec![(node.borrow().id, format_node(node))]);
+        all_edges.extend(edges);
+    }
+    // Create empty graph
+    let mut graph = Graph::<String, String, Directed, usize>::from_edges(&all_edges);
+    // Add node's value
+    for (id, node) in all_nodes.iter() {
+        let mutable_node = graph.node_weight_mut(NodeIndex::new(id.clone()));
+        if let Some(x) = mutable_node {
+            x.clear();
+            x.push_str(node);
         }
-        return graph
     }
-
-    fn _build(&mut self, node: MutableRc<Value>) {
-        if !self.nodes.contains(&node) { 
-           self.nodes.push(Rc::clone(&node));
-           for child in &node.borrow().children {
-                self.edges.push((Rc::clone(&node), Rc::clone(&child)));
-                self._build(Rc::clone(child));
-           }
-        }
-    }
-
-    fn plot(&self) {
-        // Build an empty base graph
-        let mut g: Graph<&str, &str> = Graph::new();
-        // Add nodes
-        let a = g.add_node("Node vertex: (a)");
-        let b = g.add_node("Node vertex: (b)");
-        // Add edges
-        g.add_edge(a, b, "edge from a to b");
-        println!("Plotted this thing...\n{}", Dot::new(&g));
-    }
-}   
+    // Plot graph
+    println!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
+}
 
 fn main() {
-    let first_value = Value::new(5., "Hello".to_owned());
-    let second_value = Value::new(10., "World".to_owned());
-    // Operator overload working on references
+    let first_value = Value::new(5., "A".to_owned());
+    let second_value = Value::new(10., "B".to_owned());
     let third_value = &first_value + &second_value;
-    // Build a graph
-    let graph = ValueGraph::new_with_nodes(vec![mutable_rc(first_value), mutable_rc(second_value), mutable_rc(third_value)]);
-    // Let's see if it's true
-    // dbg!(&graph);
-    graph.plot();
+    let fourth_value = &third_value + &first_value;
+    // Plot this graph
+    plot_graph(vec![mutable_rc(fourth_value)]);
 }
