@@ -6,6 +6,11 @@ use std::ops;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+fn tanh(x: f64) -> f64 {
+    (std::f64::consts::E.powf(x) - std::f64::consts::E.powf(-x))
+        / (std::f64::consts::E.powf(x) + std::f64::consts::E.powf(-x))
+}
+
 static VALUE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 type MutableRc<T> = Rc<RefCell<T>>;
@@ -24,6 +29,7 @@ struct Value {
     id: usize,
     label: String,
     data: f64,
+    gradient: f64,
     operation: Option<Operation>,
     previous: Vec<MutableRc<Value>>,
 }
@@ -34,10 +40,24 @@ impl Value {
         Self {
             id: VALUE_COUNTER.fetch_add(1, Ordering::SeqCst),
             data,
+            gradient: 0.,
             label,
             operation: None,
             previous: vec![],
         }
+    }
+
+    // Change label
+    fn set_label(&mut self, label: &str) {
+        self.label = label.to_owned();
+    }
+
+    // Apply function to value
+    fn apply<F>(&mut self, action: F)
+    where
+        F: Fn(f64) -> f64,
+    {
+        self.data = action(self.data);
     }
 }
 
@@ -48,6 +68,7 @@ impl ops::Add<&Value> for &Value {
         Value {
             id: VALUE_COUNTER.fetch_add(1, Ordering::SeqCst),
             label: format!("[{}+{}]", self.label, other.label),
+            gradient: 0.,
             data: self.data + other.data,
             operation: Some(Operation::Add),
             previous: vec![mutable_rc(self.to_owned()), mutable_rc(other.to_owned())],
@@ -61,8 +82,9 @@ impl ops::Mul<&Value> for &Value {
     fn mul(self, other: &Value) -> Value {
         Value {
             id: VALUE_COUNTER.fetch_add(1, Ordering::SeqCst),
-            label: format!("[{}x{}]", self.label, other.label),
+            label: format!("[{}*{}]", self.label, other.label),
             data: self.data * other.data,
+            gradient: 0.,
             operation: Some(Operation::Mul),
             previous: vec![mutable_rc(self.to_owned()), mutable_rc(other.to_owned())],
         }
@@ -70,7 +92,12 @@ impl ops::Mul<&Value> for &Value {
 }
 
 fn format_node(node: &MutableRc<Value>) -> String {
-    format!("{}({})", node.borrow().label.clone(), node.borrow().data)
+    format!(
+        "{}({:.2}) | {:.2}",
+        node.borrow().label.clone(),
+        node.borrow().data,
+        node.borrow().gradient
+    )
 }
 
 type Node = MutableRc<Value>;
@@ -116,13 +143,23 @@ fn plot_graph(nodes: &Vec<Node>, edges: &Vec<Edge>) {
 }
 
 fn main() {
-    let first_value = Value::new(5., "A".to_owned());
-    let second_value = Value::new(10., "B".to_owned());
-    let third_value = &first_value + &second_value;
-    let fourth_value = Value::new(0.5, "C".to_owned());
-    let fifth_value = &fourth_value * &third_value;
-    let sixth_value = Value::new(10., "D".to_owned());
-    let seventh_value = &fifth_value + &sixth_value;
-    let (nodes, edges) = trace(mutable_rc(seventh_value));
+    let x_1 = Value::new(2., "x1".to_owned());
+    let x_2 = Value::new(0., "x2".to_owned());
+    let w_1 = Value::new(-3., "w1".to_owned());
+    let w_2 = Value::new(1., "w1".to_owned());
+
+    let b = Value::new(6.7, "b".to_owned());
+    // Multiply xn * wn to create neuron
+    let xw_1 = &x_1 * &w_1;
+    let xw_2 = &x_2 * &w_2;
+
+    // Run neurons
+    let mut neuron = &(&xw_1 + &xw_2) + &b;
+    neuron.set_label("neuron");
+
+    // Run activation function on neuron
+    neuron.apply(|value| tanh(value));
+
+    let (nodes, edges) = trace(mutable_rc(neuron));
     plot_graph(&nodes, &edges);
 }
