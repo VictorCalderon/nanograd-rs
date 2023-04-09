@@ -22,6 +22,7 @@ fn mutable_rc<T>(data: T) -> MutableRc<T> {
 enum Operation {
     Add,
     Mul,
+    Tanh,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -53,11 +54,18 @@ impl Value {
     }
 
     // Apply function to value
-    fn apply<F>(&mut self, action: F)
+    fn apply<F>(self, action: F) -> Value
     where
         F: Fn(f64) -> f64,
     {
-        self.data = action(self.data);
+        Value {
+            id: VALUE_COUNTER.fetch_add(1, Ordering::SeqCst),
+            data: action(self.data),
+            gradient: 0.,
+            label: "Output".to_string(),
+            operation: Some(Operation::Tanh),
+            previous: vec![Rc::new(RefCell::new(self))],
+        }
     }
 }
 
@@ -93,7 +101,7 @@ impl ops::Mul<&Value> for &Value {
 
 fn format_node(node: &MutableRc<Value>) -> String {
     format!(
-        "{}({:.2}) | {:.2}",
+        "{} | {:.3} | {:.2}",
         node.borrow().label.clone(),
         node.borrow().data,
         node.borrow().gradient
@@ -146,7 +154,7 @@ fn main() {
     let x_1 = Value::new(2., "x1".to_owned());
     let x_2 = Value::new(0., "x2".to_owned());
     let w_1 = Value::new(-3., "w1".to_owned());
-    let w_2 = Value::new(1., "w1".to_owned());
+    let w_2 = Value::new(1., "w2".to_owned());
 
     let b = Value::new(6.7, "b".to_owned());
     // Multiply xn * wn to create neuron
@@ -155,11 +163,12 @@ fn main() {
 
     // Run neurons
     let mut neuron = &(&xw_1 + &xw_2) + &b;
-    neuron.set_label("neuron");
+    neuron.set_label("neuron+bias");
 
     // Run activation function on neuron
-    neuron.apply(|value| tanh(value));
+    let mut output = neuron.apply(|value| tanh(value));
+    output.set_label("tanh(output)");
 
-    let (nodes, edges) = trace(mutable_rc(neuron));
+    let (nodes, edges) = trace(mutable_rc(output));
     plot_graph(&nodes, &edges);
 }
