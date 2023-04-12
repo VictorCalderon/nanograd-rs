@@ -118,7 +118,7 @@ fn build(node: MutableRc<Value>, nodes: &mut Vec<Node>, edges: &mut Vec<Edge>) {
 
     nodes.push(Rc::clone(&node));
     for child in node.borrow().previous.iter() {
-        edges.push((Rc::clone(&child), Rc::clone(&node)));
+        edges.push((Rc::clone(child), Rc::clone(&node)));
         build(Rc::clone(child), nodes, edges);
     }
 }
@@ -130,7 +130,7 @@ fn trace(root: MutableRc<Value>) -> (Vec<Node>, Vec<Edge>) {
     (nodes, edges)
 }
 
-fn plot_graph(nodes: &Vec<Node>, edges: &Vec<Edge>) {
+fn plot_graph(nodes: &[Node], edges: &[Edge]) {
     // Parse edges as a vector<usize, usize>
     let parsed_edges: Vec<(usize, usize)> = edges
         .iter()
@@ -166,7 +166,7 @@ fn main() {
     neuron.set_label("neuron+bias");
 
     // Run activation function on neuron
-    let mut output = neuron.apply(|value| tanh(value));
+    let mut output = neuron.apply(tanh);
     output.set_label("tanh(output)");
 
     let (nodes, edges) = trace(mutable_rc(output));
